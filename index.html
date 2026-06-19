@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>醫療碼搜尋（健保手術碼 + ICD-10-CM）</title>
+<style>
+  :root{
+    --bg:#f1f5f9;--card:#fff;--ink:#0f172a;--sub:#64748b;--line:#e2e8f0;
+    --blue:#2563eb;--blue-soft:#eff6ff;--green:#047857;--green-soft:#ecfdf5;--green-line:#a7f3d0;
+    --teal:#0d9488;--teal-soft:#f0fdfa;--amber-bg:#fef3c7;--amber-ink:#b45309;--amber-line:#fde68a;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;padding:0;}
+  body{background:var(--bg);color:var(--ink);padding-bottom:96px;line-height:1.4;font-size:16px;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang TC","Microsoft JhengHei",Roboto,Arial,sans-serif;}
+  .wrap{max-width:760px;margin:0 auto;padding:0 16px;}
+  .bar{position:sticky;top:0;z-index:40;background:#fff;border-bottom:1px solid var(--line);box-shadow:0 1px 2px rgba(0,0,0,.04);}
+  .bar-inner{max-width:760px;margin:0 auto;padding:10px 16px 12px;}
+  /* tabs */
+  .tabs{display:flex;gap:6px;background:#f1f5f9;padding:4px;border-radius:12px;margin-bottom:10px;}
+  .tab{flex:1;border:none;background:transparent;padding:9px 8px;border-radius:9px;font-size:14px;font-weight:700;color:#64748b;cursor:pointer;transition:.15s;}
+  .tab.on{background:#fff;color:var(--blue);box-shadow:0 1px 3px rgba(0,0,0,.1);}
+  .tab.on.icd{color:var(--teal);}
+  .field{position:relative;}
+  .field svg{position:absolute;left:12px;top:50%;transform:translateY(-50%);width:20px;height:20px;color:#94a3b8;pointer-events:none;}
+  #q{width:100%;padding:13px 14px 13px 40px;border:1px solid #cbd5e1;border-radius:10px;background:#f8fafc;font-size:15px;outline:none;transition:.15s;}
+  #q:focus{background:#fff;border-color:var(--blue);box-shadow:0 0 0 3px rgba(37,99,235,.15);}
+  body.icd #q:focus{border-color:var(--teal);box-shadow:0 0 0 3px rgba(13,148,136,.15);}
+  .status{font-size:12px;color:#64748b;margin:8px 2px 0;display:flex;align-items:center;gap:6px;}
+  .spin{width:13px;height:13px;border:2px solid #cbd5e1;border-top-color:var(--blue);border-radius:50%;animation:sp .7s linear infinite;}
+  @keyframes sp{to{transform:rotate(360deg);}}
+  .list{padding:14px 0;}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px 44px 14px 16px;margin-bottom:10px;position:relative;cursor:pointer;transition:transform .12s,border-color .12s,box-shadow .12s;user-select:none;}
+  .card:active{transform:scale(.985);}
+  .card.sel{background:var(--blue-soft);border-color:var(--blue);box-shadow:0 0 0 2px var(--blue);}
+  .check{position:absolute;top:13px;right:13px;width:24px;height:24px;border-radius:50%;border:1px solid #cbd5e1;background:#fff;display:flex;align-items:center;justify-content:center;color:transparent;transition:.12s;}
+  .card.sel .check{background:var(--blue);border-color:var(--blue);color:#fff;}
+  .check svg{width:15px;height:15px;}
+  .copyhint{position:absolute;top:14px;right:14px;font-size:11px;color:#94a3b8;}
+  .tags{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px;}
+  .code{font-family:ui-monospace,Menlo,Consolas,monospace;font-weight:700;font-size:14px;letter-spacing:.3px;background:#dbeafe;color:#1e40af;padding:3px 8px;border-radius:6px;}
+  body.icd .code{background:var(--teal-soft);color:#0f766e;border:1px solid #99f6e4;}
+  .card.sel .code{background:var(--blue);color:#fff;}
+  .pts{display:inline-flex;align-items:baseline;gap:4px;font-weight:700;color:var(--green);background:var(--green-soft);border:1px solid var(--green-line);padding:3px 8px;border-radius:8px;font-size:14px;}
+  .pts small{font-size:11px;font-weight:500;color:#059669;}
+  .zh{font-size:16px;font-weight:500;color:#0f172a;margin:0 0 2px;line-height:1.35;}
+  .en{font-size:13px;color:#64748b;font-family:ui-monospace,Menlo,Consolas,monospace;margin:0;line-height:1.45;}
+  mark{background:#fde68a;color:inherit;padding:0 1px;border-radius:2px;}
+  .empty{text-align:center;padding:56px 16px;color:#94a3b8;}
+  .more{text-align:center;color:#94a3b8;font-size:13px;padding:8px 0 4px;}
+  .crow{display:flex;gap:12px;align-items:flex-start;background:#fff;border:1px solid var(--line);border-radius:14px;padding:14px 44px 14px 16px;margin-bottom:10px;position:relative;}
+  .rank{flex-shrink:0;width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;background:#f1f5f9;color:#64748b;margin-top:2px;}
+  .rank.top{background:var(--amber-bg);color:var(--amber-ink);box-shadow:0 0 0 2px var(--amber-line);}
+  .crow .body{min-width:0;flex:1;}
+  .rm{position:absolute;top:9px;right:9px;width:32px;height:32px;border:none;background:transparent;color:#cbd5e1;border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center;}
+  .rm:hover{color:#ef4444;background:#fef2f2;}.rm svg{width:18px;height:18px;}
+  .iconbtn{border:none;background:transparent;padding:8px;margin-left:-8px;border-radius:50%;cursor:pointer;color:#475569;display:flex;}
+  .iconbtn:hover{background:#f1f5f9;}.iconbtn svg{width:24px;height:24px;}
+  .htitle{font-size:18px;font-weight:700;margin:0;color:#1e293b;}
+  .hsub{font-size:12px;color:#64748b;margin:2px 0 0;}
+  .foot{position:fixed;left:0;right:0;bottom:0;padding:16px;z-index:50;pointer-events:none;}
+  .foot-inner{max-width:760px;margin:0 auto;pointer-events:auto;}
+  .gobtn{width:100%;border:none;cursor:pointer;padding:14px 20px;border-radius:12px;font-weight:700;font-size:15px;color:#fff;display:flex;align-items:center;justify-content:space-between;box-shadow:0 8px 24px rgba(30,64,175,.28);background:linear-gradient(90deg,var(--blue),#4f46e5);transition:transform .2s,opacity .2s;}
+  .gobtn.hide{transform:translateY(80px);opacity:0;pointer-events:none;}
+  .gobtn .badge{background:#fff;color:var(--blue);min-width:24px;height:24px;padding:0 6px;border-radius:999px;display:inline-flex;align-items:center;justify-content:center;font-size:12px;}
+  .gobtn .lhs{display:flex;align-items:center;gap:12px;}.gobtn .rhs{font-size:13px;font-weight:500;color:#dbeafe;}
+  .backbtn{width:100%;border:none;cursor:pointer;padding:14px 20px;border-radius:12px;font-weight:700;font-size:15px;color:#fff;background:#1e293b;display:flex;align-items:center;justify-content:center;gap:8px;box-shadow:0 8px 24px rgba(0,0,0,.2);}
+  .backbtn svg{width:18px;height:18px;}
+  .toast{position:fixed;left:50%;bottom:96px;transform:translateX(-50%) translateY(20px);background:#0f172a;color:#fff;padding:10px 18px;border-radius:999px;font-size:14px;font-weight:600;opacity:0;transition:.25s;z-index:60;pointer-events:none;}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+  .hidden{display:none !important;}
+  @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important;}}
+</style>
+</head>
+<body>
+
+<!-- ===== SEARCH VIEW ===== -->
+<div id="searchView">
+  <div class="bar"><div class="bar-inner">
+    <div class="tabs">
+      <button class="tab on" id="tabNhi" data-tab="nhi">健保手術碼</button>
+      <button class="tab" id="tabIcd" data-tab="icd">ICD-10-CM</button>
+    </div>
+    <div class="field">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+      <input id="q" type="text" autocomplete="off">
+    </div>
+    <div id="status" class="status"></div>
+  </div></div>
+  <div class="wrap"><div id="results" class="list"></div></div>
+</div>
+
+<!-- ===== COMPARE VIEW (健保 only) ===== -->
+<div id="compareView" class="hidden">
+  <div class="bar"><div class="bar-inner" style="display:flex;align-items:center;gap:12px;">
+    <button class="iconbtn" id="toSearch" aria-label="返回">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+    </button>
+    <div><h1 class="htitle">已選項目比較</h1><p class="hsub">自動依點數排序（高 → 低）</p></div>
+  </div></div>
+  <div class="wrap"><div id="compareList" class="list"></div></div>
+</div>
+
+<div class="foot"><div class="foot-inner">
+  <button id="goCompare" class="gobtn hide">
+    <span class="lhs"><span class="badge" id="goBadge">0</span><span>查看比較清單</span></span>
+    <span class="rhs">前往排序 ›</span>
+  </button>
+  <button id="goBack" class="backbtn hidden">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>繼續搜尋
+  </button>
+</div></div>
+<div id="toast" class="toast"></div>
+
+<script>
+/* ════════════════════════════════════════════════════════════════
+   資料來源設定
+   ── app 會去「同一個資料夾」抓這兩個檔：
+        nhi.txt  ← 健保手術碼（格式 代碼|中文 English|點數）
+        icd.txt  ← ICD-10-CM（格式 代碼|中文 English，無點數）
+   ── 找不到檔時（例如本機雙擊開啟）會顯示下方示範資料並提示。
+   ════════════════════════════════════════════════════════════════ */
+const NHI_FILE = 'nhi.txt';
+const ICD_FILE = 'icd.txt';
+const RESULT_CAP = 300;   // 一次最多顯示幾筆（避免畫面卡頓）
+
+/* 找不到資料檔時的示範資料（請用官方檔案取代） */
+const NHI_SAMPLE = `62032B|顯微血管游離瓣手術－ 皮瓣移植 Microvascular free flap skin flap|26627
+64141C|一般瘢痕攣縮鬆弛術 Release of scar contracture|11301
+68023B|冠狀動脈繞道手術－ 一條血管Coronary artery bypass grafting(CABG) one vessel|44014`;
+const ICD_SAMPLE = `C44.90|皮膚惡性腫瘤，未明示|Malignant neoplasm of skin, unspecified
+L91.0|蟹足腫（瘢痕疙瘩）|Hypertrophic scar (keloid)
+Q36.9|單側唇裂|Cleft lip, unilateral
+T20.20XA|頭頸部二度燒傷，初診|Burn of second degree of head, neck, initial`;
+
+/* ── 解析 ───────────────────────────────────────────── */
+function splitDesc(desc){
+  let lastZh=-1;
+  for(let i=desc.length-1;i>=0;i--){ if(/[\u4e00-\u9fa5]/.test(desc[i])){ lastZh=i; break; } }
+  let zh='',en='';
+  if(lastZh!==-1){ let cut=lastZh+1; const t=desc.slice(cut).match(/^(\s*[)）])/); if(t)cut+=t[0].length; zh=desc.slice(0,cut).trim(); en=desc.slice(cut).trim(); }
+  else en=desc;
+  return { zh:zh.replace(/^[-－]\s*/,''), en:en.replace(/^[-－]\s*/,'') };
+}
+function parseNhi(raw){
+  const seen=new Set();
+  return raw.split('\n').map(line=>{
+    line=line.trim(); if(!line) return null;
+    const m=line.match(/^(\d{5}[A-Z])/);                 // 健保碼缺「|」自動修補
+    if(m && line.charAt(m[1].length)!=='|') line=m[1]+'|'+line.slice(m[1].length);
+    if(line.indexOf('|')===-1) return null;
+    const p=line.split('|'); if(p.length<2) return null;
+    const code=p[0].trim(); if(seen.has(code)) return null; seen.add(code);
+    const points=p[p.length-1].trim();
+    const desc=p.slice(1,p.length-1).join(' ').trim()||p[1].trim();
+    const d=splitDesc(desc);
+    const abbr=[]; const pm=d.en.match(/\(([A-Z.\-]{2,})\)/g); if(pm)pm.forEach(x=>abbr.push(x.replace(/[()]/g,'').toLowerCase()));
+    return {code,zh:d.zh,en:d.en,points,abbr,_c:code.toLowerCase(),_e:d.en.toLowerCase(),_z:d.zh.toLowerCase()};
+  }).filter(Boolean);
+}
+function parseIcd(raw){
+  const seen=new Set();
+  return raw.split('\n').map(line=>{
+    line=line.trim(); if(!line) return null;
+    const p=line.indexOf('|'); if(p<0) return null;
+    const code=line.slice(0,p).trim(); if(seen.has(code)) return null; seen.add(code);
+    const rest=line.slice(p+1); const p2=rest.indexOf('|');
+    let zh,en;
+    if(p2>=0){ zh=rest.slice(0,p2).trim(); en=rest.slice(p2+1).trim(); }   // 代碼|中文|英文（官方檔）
+    else { const d=splitDesc(rest.trim()); zh=d.zh; en=d.en; }             // 向下相容 代碼|中文 英文
+    return {code,zh,en,points:null,abbr:[],_c:code.toLowerCase(),_e:en.toLowerCase(),_z:zh.toLowerCase()};
+  }).filter(Boolean);
+}
+
+/* ── 工具 ───────────────────────────────────────────── */
+function ptVal(p){ if(!p) return 0; return parseInt(String(p).replace(/,/g,''),10)||0; }
+function esc(s){ return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function hl(s,term){ s=esc(s); if(!term) return s; const t=term.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'); try{return s.replace(new RegExp('('+t+')','ig'),'<mark>$1</mark>');}catch(e){return s;} }
+
+/* ── 狀態 ───────────────────────────────────────────── */
+const DB = { nhi:[], icd:[] };
+const TERM = { nhi:'', icd:'' };
+let tab = 'nhi';
+const picked = {};               // 健保比較清單（code -> true）
+
+/* ── 搜尋 ───────────────────────────────────────────── */
+function search(which, term){
+  const data=DB[which]; term=term.trim().toLowerCase();
+  if(!term) return { rows:data.slice(0,RESULT_CAP), total:data.length };
+  const toks=term.split(/\s+/).filter(Boolean);
+  const scored=[];
+  for(let i=0;i<data.length;i++){
+    const s=data[i]; let sc=0;
+    if(s._c===term) sc+=2000; else if(s._c.indexOf(term)===0) sc+=1000; else if(s._c.replace(/\./g,'').indexOf(term.replace(/\./g,''))>-1) sc+=120;
+    if(s.abbr.length){ if(s.abbr.indexOf(term)>-1) sc+=3000; else if(s.abbr.some(a=>a.indexOf(term)>-1)) sc+=150; }
+    const w=s._e.replace(/[()]/g,'').split(/[\s,.\-]+/);
+    if(toks.every(tk=>w.some(x=>x.indexOf(tk)===0))){ sc+=800; if(w.indexOf(term)>-1) sc+=200; }
+    else if(s._e.indexOf(term)>-1) sc+=10;
+    if(s._z.indexOf(term)>-1) sc+=500;
+    if(sc>0) scored.push({s,sc});
+  }
+  scored.sort((a,b)=>b.sc-a.sc);
+  return { rows:scored.slice(0,RESULT_CAP).map(o=>o.s), total:scored.length };
+}
+
+/* ── 畫面 ───────────────────────────────────────────── */
+const elResults=document.getElementById('results'), elCompare=document.getElementById('compareList');
+const elQ=document.getElementById('q'), elStatus=document.getElementById('status');
+const elGo=document.getElementById('goCompare'), elGoBadge=document.getElementById('goBadge'), elBack=document.getElementById('goBack');
+const elToast=document.getElementById('toast');
+const checkSVG='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+const xSVG='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+function ptsBadge(p){ return '<span class="pts">'+esc(p)+' <small>pts</small></span>'; }
+
+function renderResults(){
+  const term=TERM[tab];
+  if(DB[tab].length===0){ elResults.innerHTML='<div class="empty">資料尚未載入。</div>'; return; }
+  const {rows,total}=search(tab,term);
+  if(rows.length===0){ elResults.innerHTML='<div class="empty">沒有符合的項目</div>'; return; }
+  let html=rows.map(s=>{
+    if(tab==='nhi'){
+      const on=!!picked[s.code];
+      return '<div class="card'+(on?' sel':'')+'" data-code="'+esc(s.code)+'">'
+        +'<div class="check">'+checkSVG+'</div>'
+        +'<div class="tags"><span class="code">'+esc(s.code)+'</span>'+ptsBadge(s.points)+'</div>'
+        +(s.zh?'<p class="zh">'+hl(s.zh,term)+'</p>':'')
+        +(s.en?'<p class="en">'+hl(s.en,term)+'</p>':'')+'</div>';
+    } else {
+      return '<div class="card" data-code="'+esc(s.code)+'">'
+        +'<div class="copyhint">點擊複製</div>'
+        +'<div class="tags"><span class="code">'+esc(s.code)+'</span></div>'
+        +(s.zh?'<p class="zh">'+hl(s.zh,term)+'</p>':'')
+        +(s.en?'<p class="en">'+hl(s.en,term)+'</p>':'')+'</div>';
+    }
+  }).join('');
+  if(total>rows.length) html+='<div class="more">顯示前 '+rows.length+' 筆（共 '+total+' 筆符合），請輸入更精確關鍵字</div>';
+  elResults.innerHTML=html;
+}
+function renderCompare(){
+  const items=DB.nhi.filter(s=>picked[s.code]).sort((a,b)=>ptVal(b.points)-ptVal(a.points));
+  if(items.length===0){ elCompare.innerHTML='<div class="empty">清單是空的<br><span style="font-size:14px">回搜尋頁點卡片即可加入比較</span></div>'; return; }
+  elCompare.innerHTML=items.map((s,i)=>'<div class="crow">'
+    +'<div class="rank'+(i<3?' top':'')+'">'+(i+1)+'</div>'
+    +'<div class="body"><div class="tags"><span class="code">'+esc(s.code)+'</span>'+ptsBadge(s.points)+'</div>'
+    +'<p class="zh">'+esc(s.zh)+'</p>'+(s.en?'<p class="en">'+esc(s.en)+'</p>':'')+'</div>'
+    +'<button class="rm" data-code="'+esc(s.code)+'">'+xSVG+'</button></div>').join('');
+}
+function refreshFooter(){
+  const n=Object.keys(picked).length;
+  elGoBadge.textContent=n;
+  const showGo = (tab==='nhi' && n>0);
+  elGo.classList.toggle('hide', !showGo);
+}
+function toggle(code){ if(picked[code]) delete picked[code]; else picked[code]=true; refreshFooter(); }
+
+function showToast(msg){ elToast.textContent=msg; elToast.classList.add('show'); clearTimeout(showToast._t); showToast._t=setTimeout(()=>elToast.classList.remove('show'),1300); }
+function copyCode(code){
+  if(navigator.clipboard && navigator.clipboard.writeText){ navigator.clipboard.writeText(code).then(()=>showToast('已複製 '+code)).catch(()=>showToast(code)); }
+  else showToast(code);
+}
+
+/* ── 分頁切換 ─────────────────────────────────────── */
+function setTab(which){
+  tab=which;
+  document.getElementById('tabNhi').classList.toggle('on', which==='nhi');
+  document.getElementById('tabIcd').classList.toggle('on', which==='icd');
+  document.getElementById('tabIcd').classList.toggle('icd', which==='icd');
+  document.body.classList.toggle('icd', which==='icd');
+  elQ.placeholder = which==='nhi' ? '搜尋健保碼、英文、中文或縮寫（如 CABG）…' : '搜尋 ICD 代碼、英文或中文（如 L91.0、keloid）…';
+  elQ.value = TERM[which];
+  refreshFooter(); renderResults(); window.scrollTo(0,0);
+}
+
+/* ── 事件 ───────────────────────────────────────────── */
+let deb;
+elQ.addEventListener('input',()=>{ TERM[tab]=elQ.value; clearTimeout(deb); deb=setTimeout(renderResults,120); });
+document.getElementById('tabNhi').addEventListener('click',()=>setTab('nhi'));
+document.getElementById('tabIcd').addEventListener('click',()=>setTab('icd'));
+elResults.addEventListener('click',e=>{
+  const card=e.target.closest('.card'); if(!card) return;
+  const code=card.getAttribute('data-code');
+  if(tab==='nhi'){ toggle(code); card.classList.toggle('sel', !!picked[code]); }
+  else { copyCode(code); }
+});
+elCompare.addEventListener('click',e=>{ const b=e.target.closest('.rm'); if(!b) return; toggle(b.getAttribute('data-code')); renderCompare(); });
+function show(view){
+  document.getElementById('searchView').classList.toggle('hidden', view!=='search');
+  document.getElementById('compareView').classList.toggle('hidden', view!=='compare');
+  elGo.classList.toggle('hidden', view!=='search');
+  elBack.classList.toggle('hidden', view!=='compare');
+  if(view==='search'){ refreshFooter(); renderResults(); }
+  window.scrollTo(0,0);
+}
+elGo.addEventListener('click',()=>{ renderCompare(); show('compare'); });
+elBack.addEventListener('click',()=>show('search'));
+document.getElementById('toSearch').addEventListener('click',()=>show('search'));
+
+/* ── 載入資料 ─────────────────────────────────────── */
+async function load(file, parser, sample, label){
+  try{
+    const r=await fetch(file,{cache:'no-cache'});
+    if(!r.ok) throw new Error('http '+r.status);
+    const txt=await r.text();
+    const data=parser(txt);
+    if(!data.length) throw new Error('empty');
+    return {data, ok:true};
+  }catch(e){
+    return {data:parser(sample), ok:false};
+  }
+}
+async function boot(){
+  elStatus.innerHTML='<span class="spin"></span> 載入資料中…';
+  const [nhi,icd]=await Promise.all([
+    load(NHI_FILE,parseNhi,NHI_SAMPLE,'健保'),
+    load(ICD_FILE,parseIcd,ICD_SAMPLE,'ICD')
+  ]);
+  DB.nhi=nhi.data; DB.icd=icd.data;
+  const notes=[];
+  notes.push(nhi.ok ? '健保碼 '+DB.nhi.length+' 筆' : '健保碼（示範 '+DB.nhi.length+' 筆，未找到 nhi.txt）');
+  notes.push(icd.ok ? 'ICD '+DB.icd.length+' 筆' : 'ICD（示範 '+DB.icd.length+' 筆，未找到 icd.txt）');
+  elStatus.textContent = '✓ ' + notes.join('　|　');
+  if(nhi.ok && icd.ok) setTimeout(()=>{ elStatus.textContent=''; }, 2500);
+  setTab('nhi');
+}
+boot();
+</script>
+</body>
+</html>
