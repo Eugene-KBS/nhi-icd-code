@@ -2,8 +2,8 @@
 <html lang="zh-TW">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>醫療碼搜尋（健保手術碼 + ICD-10-CM）</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>醫療碼搜尋（嵌入版）</title>
 <style>
   :root{
     --bg:#f1f5f9;--card:#fff;--ink:#0f172a;--sub:#64748b;--line:#e2e8f0;
@@ -24,7 +24,7 @@
   .tab.on.icd{color:var(--teal);}
   .field{position:relative;}
   .field svg{position:absolute;left:12px;top:50%;transform:translateY(-50%);width:20px;height:20px;color:#94a3b8;pointer-events:none;}
-  #q{width:100%;padding:13px 14px 13px 40px;border:1px solid #cbd5e1;border-radius:10px;background:#f8fafc;font-size:15px;outline:none;transition:.15s;}
+  #q{width:100%;padding:12px 14px 12px 40px;border:1px solid #cbd5e1;border-radius:10px;background:#f8fafc;font-size:16px;outline:none;transition:.15s;}
   #q:focus{background:#fff;border-color:var(--blue);box-shadow:0 0 0 3px rgba(37,99,235,.15);}
   body.icd #q:focus{border-color:var(--teal);box-shadow:0 0 0 3px rgba(13,148,136,.15);}
   .status{font-size:12px;color:#64748b;margin:8px 2px 0;display:flex;align-items:center;gap:6px;}
@@ -156,7 +156,7 @@ function parseNhi(raw){
     const desc=p.slice(1,p.length-1).join(' ').trim()||p[1].trim();
     const d=splitDesc(desc);
     const abbr=[]; const pm=d.en.match(/\(([A-Z.\-]{2,})\)/g); if(pm)pm.forEach(x=>abbr.push(x.replace(/[()]/g,'').toLowerCase()));
-    return {code,zh:d.zh,en:d.en,points,abbr,_c:code.toLowerCase(),_e:d.en.toLowerCase(),_z:d.zh.toLowerCase()};
+    return {code,zh:d.zh,en:d.en,points,abbr,_c:code.toLowerCase(),_e:d.en.toLowerCase(),_z:d.zh.toLowerCase(),_ew:ewords(d.en)};
   }).filter(Boolean);
 }
 function parseIcd(raw){
@@ -169,11 +169,30 @@ function parseIcd(raw){
     let zh,en;
     if(p2>=0){ zh=rest.slice(0,p2).trim(); en=rest.slice(p2+1).trim(); }   // 代碼|中文|英文（官方檔）
     else { const d=splitDesc(rest.trim()); zh=d.zh; en=d.en; }             // 向下相容 代碼|中文 英文
-    return {code,zh,en,points:null,abbr:[],_c:code.toLowerCase(),_e:en.toLowerCase(),_z:zh.toLowerCase()};
+    return {code,zh,en,points:null,abbr:[],_c:code.toLowerCase(),_e:en.toLowerCase(),_z:zh.toLowerCase(),_ew:ewords(en)};
   }).filter(Boolean);
 }
 
 /* ── 工具 ───────────────────────────────────────────── */
+function ewords(en){ return en.toLowerCase().replace(/[()]/g,' ').split(/[\s,.\-\/]+/).filter(Boolean); }
+
+/* 常用醫學縮寫 → 對應英文(可多個)＋中文。查詢時自動展開比對。
+   英文以「字首」比對英文描述；中文以「子字串」比對中文描述。 */
+const SYN = {
+  rt:['right','右'], lt:['left','左'], bilat:['bilateral','雙側'], bil:['bilateral','雙側'], uni:['unilateral','單側'],
+  fx:['fracture','骨折'], fxs:['fracture','骨折'], dislo:['dislocation','脫位'],
+  bx:['biopsy','切片'], exc:['excision','切除'], resec:['resection','切除'], rec:['reconstruction','重建'],
+  recon:['reconstruction','重建'], rep:['repair','修補'], amp:['amputation','截肢','切斷'], lac:['laceration','裂傷'],
+  ca:['cancer','carcinoma','癌'], tumor:['tumor','tumour','腫瘤'], mets:['metastatic','metastasis','轉移'],
+  inj:['injection','注射'], inf:['infection','感染'], abd:['abdomen','abdominal','腹'], thx:['thorax','thoracic','胸'],
+  ant:['anterior','前'], post:['posterior','後'], prox:['proximal','近端'], dist:['distal','遠端'],
+  sup:['superior'], infr:['inferior'], med:['medial'], lous:['lateral'],
+  unsp:['unspecified','未明示'], excis:['excision','切除'], grft:['graft','移植'], flap:['flap','皮瓣'],
+  burn:['burn','燒傷'], debride:['debridement','清創'], dx:['diagnosis'], tx:['treatment','治療'], hx:['history'],
+  w:['with'], wo:['without'], wi:['with']
+};
+function expandTok(tk){ return SYN[tk] ? [tk].concat(SYN[tk]) : [tk]; }
+
 function ptVal(p){ if(!p) return 0; return parseInt(String(p).replace(/,/g,''),10)||0; }
 function esc(s){ return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 function hl(s,term){ s=esc(s); if(!term) return s; const t=term.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'); try{return s.replace(new RegExp('('+t+')','ig'),'<mark>$1</mark>');}catch(e){return s;} }
@@ -185,18 +204,27 @@ let tab = 'nhi';
 const picked = {};               // 健保比較清單（code -> true）
 
 /* ── 搜尋 ───────────────────────────────────────────── */
+function tokenHit(s, tk){
+  const cands=expandTok(tk);
+  for(let k=0;k<cands.length;k++){
+    const c=cands[k];
+    if(/[\u4e00-\u9fa5]/.test(c)){ if(s._z.indexOf(c)>-1) return true; }   // 中文：子字串
+    else { for(let j=0;j<s._ew.length;j++){ if(s._ew[j].indexOf(c)===0) return true; } } // 英文：字首
+  }
+  if(s._z.indexOf(tk)>-1) return true;                                     // 原始詞也比對中文
+  return false;
+}
 function search(which, term){
   const data=DB[which]; term=term.trim().toLowerCase();
   if(!term) return { rows:data.slice(0,RESULT_CAP), total:data.length };
   const toks=term.split(/\s+/).filter(Boolean);
+  const codeQ=term.replace(/\./g,'');
   const scored=[];
   for(let i=0;i<data.length;i++){
     const s=data[i]; let sc=0;
-    if(s._c===term) sc+=2000; else if(s._c.indexOf(term)===0) sc+=1000; else if(s._c.replace(/\./g,'').indexOf(term.replace(/\./g,''))>-1) sc+=120;
+    if(s._c===term) sc+=2000; else if(s._c.indexOf(term)===0) sc+=1000; else if(s._c.replace(/\./g,'').indexOf(codeQ)>-1) sc+=120;
     if(s.abbr.length){ if(s.abbr.indexOf(term)>-1) sc+=3000; else if(s.abbr.some(a=>a.indexOf(term)>-1)) sc+=150; }
-    const w=s._e.replace(/[()]/g,'').split(/[\s,.\-]+/);
-    if(toks.every(tk=>w.some(x=>x.indexOf(tk)===0))){ sc+=800; if(w.indexOf(term)>-1) sc+=200; }
-    else if(s._e.indexOf(term)>-1) sc+=10;
+    if(toks.every(tk=>tokenHit(s,tk))){ sc+=700; if(s._ew.indexOf(term)>-1) sc+=250; }
     if(s._z.indexOf(term)>-1) sc+=500;
     if(sc>0) scored.push({s,sc});
   }
@@ -324,6 +352,7 @@ async function boot(){
   setTab('nhi');
 }
 boot();
+
 </script>
 </body>
 </html>
